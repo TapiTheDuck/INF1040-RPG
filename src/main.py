@@ -8,6 +8,11 @@ Toda entrada e saída passa por _exibir e _ler, para que a interface possa
 ser trocada (terminal, navegador) sem mexer na lógica do jogo.
 """
 
+import os
+from xml.dom import minidom
+from xml.etree import ElementTree
+from xml.etree.ElementTree import Element, SubElement
+
 import itens
 import narrativa
 import personagem
@@ -17,20 +22,29 @@ SUCESSO = 0
 ERRO_ABORT = 1
 ERRO_DADOS_INVALIDOS = 3
 ERRO_ID_INEXISTENTE = 4
+ERRO_ARQUIVO = 5
 
 ID_CENA_INICIAL = "inicio"
+PASTA_DADOS = "dados"
+ARQUIVO_PERSONAGEM = os.path.join(PASTA_DADOS, "personagem.xml")
+ARQUIVO_INVENTARIO = os.path.join(PASTA_DADOS, "inventario.xml")
+ARQUIVO_PROGRESSO = os.path.join(PASTA_DADOS, "progresso.xml")
 CLASSES = ("guerreiro", "mago", "arqueiro")
 
 # Dados de sessão do Principal:
 #   id_cena         : cena em que o jogador está (DadoCenaAtual)
 #   escolhas_feitas : pares (id_cena, id_escolha) já escolhidos, para marcar "[FEITO]"
 #   encerrar        : True quando o jogador pede para encerrar o programa
-_sessao = {"id_cena": ID_CENA_INICIAL, "escolhas_feitas": set(), "encerrar": False}
+#   em_andamento    : True enquanto há uma aventura rodando (para gravar ao encerrar)
+#   em_combate      : True durante um combate (nesse caso não grava ao encerrar)
+_sessao = {"id_cena": ID_CENA_INICIAL, "escolhas_feitas": set(), "encerrar": False,
+           "em_andamento": False, "em_combate": False}
 
 _MENSAGENS_ERRO = {
     ERRO_ABORT: "Não foi possível concluir a operação.",
     ERRO_DADOS_INVALIDOS: "Entrada inválida.",
     ERRO_ID_INEXISTENTE: "Opção inexistente.",
+    ERRO_ARQUIVO: "Erro ao ler ou gravar o arquivo.",
 }
 
 
@@ -276,7 +290,9 @@ def obter_acao(estado):
 
 def _jogar_combate(id_cena):
     """Conduz o combate da cena. Devolve False se o jogo não pode continuar."""
+    _sessao["em_combate"] = True
     codigo, resultado = narrativa.iniciar_combate(id_cena, obter_acao)
+    _sessao["em_combate"] = False
     if codigo != SUCESSO:
         _mostrar_erro(codigo, {ERRO_ABORT: "O combate foi interrompido por um erro."})
         return False
@@ -290,17 +306,121 @@ def _jogar_combate(id_cena):
 
 
 # ---------------------------------------------------------------------------
+# Persistência (arquivos XML em PASTA_DADOS)
+#
+# Personagem e inventário são gravados pelos próprios módulos; o Principal
+# grava apenas os seus dados de sessão (cena atual e escolhas feitas). Durante
+# o jogo tudo fica em memória; os arquivos só são lidos e gravados aqui.
+# ---------------------------------------------------------------------------
+def _escrever_xml(raiz, caminho):
+    """Grava o XML formatado em caminho (UTF-8), via arquivo temporário.
+    Levanta OSError se não conseguir."""
+    texto = minidom.parseString(ElementTree.tostring(raiz, "utf-8")).toprettyxml(indent="  ")
+    temporario = caminho + ".tmp"
+    try:
+        with open(temporario, "w", encoding="utf-8") as arquivo:
+            arquivo.write(texto)
+        os.replace(temporario, caminho)
+    except OSError:
+        try:
+            os.remove(temporario)
+        except OSError:
+            pass
+        raise
+
+
+def _gravar_progresso():
+    """Grava a cena atual e as escolhas feitas. Devolve True se conseguiu."""
+    raiz = Element("progresso")
+    SubElement(raiz, "cena").text = _sessao["id_cena"]
+    feitas = SubElement(raiz, "escolhas_feitas")
+    for id_cena, id_escolha in sorted(_sessao["escolhas_feitas"]):
+        SubElement(feitas, "escolha", cena=id_cena, id=id_escolha)
+    try:
+        _escrever_xml(raiz, ARQUIVO_PROGRESSO)
+    except OSError:
+        return False
+    return True
+
+
+def _recuperar_progresso():
+    """Restaura a cena atual e as escolhas feitas. Devolve True se conseguiu;
+    em caso de erro, a sessão não é alterada."""
+    try:
+        with open(ARQUIVO_PROGRESSO, "rt", encoding="utf-8") as arquivo:
+            raiz = ElementTree.parse(arquivo).getroot()
+        id_cena = raiz.find("cena").text.strip()
+        feitas = {(e.get("cena"), e.get("id")) for e in raiz.iter("escolha")}
+    except (OSError, ElementTree.ParseError, AttributeError, UnicodeError):
+        return False
+    if raiz.tag != "progresso" or id_cena == "" or any(None in par for par in feitas):
+        return False
+    _sessao["id_cena"] = id_cena
+    _sessao["escolhas_feitas"] = feitas
+    return True
+
+
+def _existe_salvamento():
+    return all(os.path.isfile(caminho) for caminho in
+               (ARQUIVO_PERSONAGEM, ARQUIVO_INVENTARIO, ARQUIVO_PROGRESSO))
+
+
+def _salvar_aventura():
+    """Grava personagem, inventário e progresso. Devolve True se salvou."""
+    codigo, dados = personagem.consultar_personagem()
+    if codigo != SUCESSO or not dados["vivo"]:
+        _exibir("Não há aventura em andamento para salvar.")
+        return False
+    try:
+        os.makedirs(PASTA_DADOS, exist_ok=True)
+    except OSError:
+        _exibir("Não foi possível criar a pasta de salvamento.")
+        return False
+
+    codigo, _ = personagem.gravar_personagem(ARQUIVO_PERSONAGEM)
+    if codigo == SUCESSO:
+        codigo, _ = itens.gravar_inventario(ARQUIVO_INVENTARIO)
+    if codigo != SUCESSO or not _gravar_progresso():
+        _exibir("Não foi possível salvar a aventura.")
+        return False
+    _exibir("Aventura salva.")
+    return True
+
+
+def _gravar_ao_encerrar():
+    """Grava a aventura ao encerrar o programa, se houver uma em andamento.
+
+    Durante um combate não grava, e o último salvamento é mantido.
+    """
+    if _sessao["em_andamento"] and _sessao["em_combate"]:
+        _exibir("Você estava em combate: o último salvamento foi mantido.")
+    elif _sessao["em_andamento"]:
+        _salvar_aventura()
+    _sessao["em_andamento"] = False
+
+
+def continuar_aventura():
+    """Restaura personagem, inventário e progresso gravados. True se deu certo."""
+    mensagens = {
+        ERRO_ID_INEXISTENTE: "Arquivo de salvamento não encontrado.",
+        ERRO_ARQUIVO: "O salvamento está ilegível ou corrompido.",
+    }
+    codigo, _ = personagem.recuperar_personagem(ARQUIVO_PERSONAGEM)
+    if codigo == SUCESSO:
+        codigo, _ = itens.recuperar_inventario(ARQUIVO_INVENTARIO)
+    if codigo != SUCESSO:
+        _mostrar_erro(codigo, mensagens)
+        return False
+    if not _recuperar_progresso():
+        _mostrar_erro(ERRO_ARQUIVO, mensagens)
+        return False
+    _exibir("Aventura carregada.")
+    return True
+
+
+# ---------------------------------------------------------------------------
 # Menu do jogo
 # ---------------------------------------------------------------------------
-def _salvar_aventura():
-    """Grava a aventura em arquivo.
-
-    A persistência ainda não foi implementada: este é o ponto onde ela será
-    ligada (gravar personagem, inventário, cena atual e escolhas feitas).
-    """
-    _exibir("Salvar ainda não está disponível nesta versão.")
-
-
 def abrir_menu():
     """Menu do jogo, aberto com [M] durante as cenas (não durante o combate).
 
@@ -315,7 +435,7 @@ def abrir_menu():
         if opcao == "2":
             _salvar_aventura()
         elif opcao == "0":
-            resposta = _ler("Encerrar o programa? O que não foi salvo será perdido (s/n): ")
+            resposta = _ler("Encerrar o programa? Sua aventura será salva automaticamente (s/n): ")
             if resposta.lower() == "s":
                 return True
         else:
@@ -357,6 +477,17 @@ def _escolher_na_cena(id_cena, cena):
 
 
 def jogar():
+    """Roda a aventura. Ela deixa de estar "em andamento" ao chegar a um final
+    ou a um erro; se o jogador pediu para encerrar o programa, ou se o
+    programa foi interrompido, continua marcada como em andamento para ser
+    gravada ao encerrar."""
+    _sessao["em_andamento"] = True
+    _percorrer_cenas()
+    if not _sessao["encerrar"]:
+        _sessao["em_andamento"] = False
+
+
+def _percorrer_cenas():
     """Loop da aventura: exibe a cena atual e segue a história até um final."""
     while True:
         id_cena = _sessao["id_cena"]
@@ -384,17 +515,30 @@ def jogar():
                 return
 
 
+def _rodar_aventura():
+    """Roda a aventura. Devolve True se o programa deve ser encerrado."""
+    jogar()
+    if _sessao["encerrar"]:
+        _gravar_ao_encerrar()
+        _exibir("Até a próxima!")
+        return True
+    return False
+
+
 def main():
     _exibir("=== RPG Narrativo ===")
     while True:
-        _exibir("\n1) Nova aventura\n0) Sair")
+        _exibir("\n1) Nova aventura")
+        if _existe_salvamento():
+            _exibir("2) Continuar aventura")
+        _exibir("0) Sair")
         opcao = _ler("> ")
         if opcao == "1":
-            if criar_novo_personagem():
-                jogar()
-                if _sessao["encerrar"]:
-                    _exibir("Até a próxima!")
-                    return
+            if criar_novo_personagem() and _rodar_aventura():
+                return
+        elif opcao == "2" and _existe_salvamento():
+            if continuar_aventura() and _rodar_aventura():
+                return
         elif opcao == "0":
             _exibir("Até a próxima!")
             return
@@ -406,4 +550,6 @@ if __name__ == "__main__":
     try:
         main()
     except (KeyboardInterrupt, EOFError):
-        print("\nJogo encerrado.")
+        _exibir()
+        _gravar_ao_encerrar()
+        _exibir("Jogo encerrado.")

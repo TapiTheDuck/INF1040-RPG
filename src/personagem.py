@@ -4,9 +4,17 @@ Guarda e manipula os dados do personagem do jogador. Existe um único
 personagem por vez, mantido em estado privado do módulo.
 
 Todas as funções de acesso retornam (codigo_retorno, resultado).
+
+Persistência: durante o jogo os dados ficam só na memória do módulo; o arquivo
+XML é usado apenas para gravar o personagem (gravar_personagem) e recuperá-lo
+em uma execução posterior (recuperar_personagem).
 """
 
 import copy
+import os
+from xml.dom import minidom
+from xml.etree import ElementTree
+from xml.etree.ElementTree import Element, SubElement
 
 __all__ = [
     "criar_personagem",
@@ -15,6 +23,8 @@ __all__ = [
     "aplicar_dano",
     "curar",
     "matar_personagem",
+    "gravar_personagem",
+    "recuperar_personagem",
 ]
 
 # Códigos de retorno (mesmos valores em todos os módulos)
@@ -22,6 +32,7 @@ SUCESSO = 0
 ERRO_ABORT = 1
 ERRO_DADOS_INVALIDOS = 3
 ERRO_ID_INEXISTENTE = 4
+ERRO_ARQUIVO = 5
 
 # XP para sair do nível N: _XP_BASE * N (nível 1 -> 100, nível 2 -> 200...)
 _XP_BASE = 100
@@ -217,4 +228,146 @@ def matar_personagem():
         return ERRO_ID_INEXISTENTE, None
     _personagem["pv"] = 0
     _personagem["vivo"] = False
+    return SUCESSO, None
+
+
+# ---------------------------------------------------------------------------
+# Persistência em arquivo XML
+# ---------------------------------------------------------------------------
+def _escrever_xml(raiz, caminho):
+    """Função interna: grava o XML formatado em caminho (UTF-8).
+
+    Escreve num arquivo temporário e o renomeia no fim, para que uma falha no
+    meio não corrompa o arquivo anterior. Levanta OSError se não conseguir.
+    """
+    texto = minidom.parseString(ElementTree.tostring(raiz, "utf-8")).toprettyxml(indent="  ")
+    temporario = caminho + ".tmp"
+    try:
+        with open(temporario, "w", encoding="utf-8") as arquivo:
+            arquivo.write(texto)
+        os.replace(temporario, caminho)
+    except OSError:
+        try:
+            os.remove(temporario)
+        except OSError:
+            pass
+        raise
+
+
+def _personagem_para_xml(dados):
+    """Função interna: monta o XML do personagem a partir do dicionário."""
+    raiz = Element("personagem")
+    SubElement(raiz, "nome").text = dados["nome"]
+    classe = SubElement(raiz, "classe", nome=dados["classe"]["nome"])
+    for nome, valor in dados["classe"]["atributos"].items():
+        SubElement(classe, "atributo", nome=nome).text = str(valor)
+    for campo in ("nivel", "xp", "xp_max", "pv", "pv_max"):
+        SubElement(raiz, campo).text = str(dados[campo])
+    SubElement(raiz, "vivo").text = str(dados["vivo"])
+    return raiz
+
+
+def _ler_inteiro(raiz, campo, minimo):
+    """Função interna: lê um campo inteiro do XML, com valor mínimo."""
+    valor = int(raiz.find(campo).text)
+    if valor < minimo:
+        raise ValueError(campo)
+    return valor
+
+
+def _xml_para_personagem(raiz):
+    """Função interna: converte o XML no dicionário do personagem.
+
+    Levanta ValueError (ou AttributeError/TypeError) se o conteúdo for
+    inválido ou inconsistente.
+    """
+    if raiz.tag != "personagem":
+        raise ValueError("raiz inesperada")
+    nome = raiz.find("nome").text.strip()
+    elemento_classe = raiz.find("classe")
+    nome_classe = elemento_classe.get("nome")
+    if nome == "" or nome_classe not in _CLASSES:
+        raise ValueError("nome ou classe inválidos")
+
+    atributos = {a.get("nome"): int(a.text) for a in elemento_classe.findall("atributo")}
+    if set(atributos) != set(_CLASSES[nome_classe]["atributos"]):
+        raise ValueError("atributos inválidos")
+
+    nivel = _ler_inteiro(raiz, "nivel", 1)
+    xp_max = _ler_inteiro(raiz, "xp_max", 1)
+    xp = _ler_inteiro(raiz, "xp", 0)
+    pv_max = _ler_inteiro(raiz, "pv_max", 1)
+    pv = _ler_inteiro(raiz, "pv", 0)
+    vivo = raiz.find("vivo").text.strip()
+    if (xp_max != _XP_BASE * nivel or xp >= xp_max or pv > pv_max
+            or vivo not in ("True", "False") or (vivo == "True") != (pv > 0)):
+        raise ValueError("valores inconsistentes")
+
+    return {
+        "nome": nome,
+        "classe": {"nome": nome_classe, "atributos": atributos},
+        "nivel": nivel,
+        "xp": xp,
+        "xp_max": xp_max,
+        "pv": pv,
+        "pv_max": pv_max,
+        "vivo": vivo == "True",
+    }
+
+
+def gravar_personagem(caminho):
+    """Grava o personagem atual em um arquivo XML.
+
+    Assertivas de entrada:
+        caminho (str): texto não vazio com o caminho do arquivo a gravar; a
+            pasta do arquivo precisa existir. Um arquivo já existente é
+            substituído.
+        Exige que um personagem já tenha sido criado.
+
+    Retornos:
+        (SUCESSO, None)               personagem gravado
+        (ERRO_DADOS_INVALIDOS, None)  caminho não é texto ou é vazio
+        (ERRO_ID_INEXISTENTE, None)   nenhum personagem foi criado
+        (ERRO_ARQUIVO, None)          falha ao gravar o arquivo
+    """
+    if not isinstance(caminho, str) or caminho.strip() == "":
+        return ERRO_DADOS_INVALIDOS, None
+    if _personagem is None:
+        return ERRO_ID_INEXISTENTE, None
+    try:
+        _escrever_xml(_personagem_para_xml(_personagem), caminho)
+    except OSError:
+        return ERRO_ARQUIVO, None
+    return SUCESSO, None
+
+
+def recuperar_personagem(caminho):
+    """Recupera o personagem gravado em um arquivo XML, substituindo o atual.
+
+    Assertivas de entrada:
+        caminho (str): texto não vazio com o caminho de um arquivo gravado por
+            gravar_personagem.
+        Não exige personagem prévio.
+
+    Retornos:
+        (SUCESSO, None)               personagem restaurado
+        (ERRO_DADOS_INVALIDOS, None)  caminho não é texto ou é vazio
+        (ERRO_ID_INEXISTENTE, None)   o arquivo não existe
+        (ERRO_ARQUIVO, None)          arquivo ilegível ou com conteúdo inválido;
+                                      o personagem atual não é alterado
+    """
+    global _personagem
+
+    if not isinstance(caminho, str) or caminho.strip() == "":
+        return ERRO_DADOS_INVALIDOS, None
+    if not os.path.isfile(caminho):
+        return ERRO_ID_INEXISTENTE, None
+    try:
+        with open(caminho, "rt", encoding="utf-8") as arquivo:
+            raiz = ElementTree.parse(arquivo).getroot()
+        novo = _xml_para_personagem(raiz)
+    except (OSError, ElementTree.ParseError, ValueError, AttributeError, TypeError, UnicodeError):
+        return ERRO_ARQUIVO, None
+
+    _personagem = novo
     return SUCESSO, None
