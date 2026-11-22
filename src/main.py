@@ -25,7 +25,7 @@ ERRO_ID_INEXISTENTE = 4
 ERRO_ARQUIVO = 5
 
 ID_CENA_INICIAL = "inicio"
-PASTA_DADOS = "dados"
+PASTA_DADOS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dados")
 ARQUIVO_PERSONAGEM = os.path.join(PASTA_DADOS, "personagem.xml")
 ARQUIVO_INVENTARIO = os.path.join(PASTA_DADOS, "inventario.xml")
 ARQUIVO_PROGRESSO = os.path.join(PASTA_DADOS, "progresso.xml")
