@@ -31,6 +31,11 @@ ARQUIVO_INVENTARIO = os.path.join(PASTA_DADOS, "inventario.xml")
 ARQUIVO_PROGRESSO = os.path.join(PASTA_DADOS, "progresso.xml")
 CLASSES = ("guerreiro", "mago", "arqueiro")
 
+# Kit inicial de cada novo personagem (do principal.py do Eduardo): o que ele
+# recebe e o que já começa equipado.
+_KIT_INICIAL = {"espada_curta": 1, "armadura_couro": 1, "pocao_vida": 2}
+_EQUIPADO_NO_INICIO = ("espada_curta", "armadura_couro")
+
 # Dados de sessão do Principal:
 #   id_cena         : cena em que o jogador está (DadoCenaAtual)
 #   escolhas_feitas : pares (id_cena, id_escolha) já escolhidos, para marcar "[FEITO]"
@@ -71,9 +76,22 @@ def _mostrar_erro(codigo, especificas=None):
 # ---------------------------------------------------------------------------
 # Personagem
 # ---------------------------------------------------------------------------
+def _dar_kit_inicial():
+    """Entrega o kit inicial e equipa a arma e a armadura. True se deu certo."""
+    for id_item, quantidade in _KIT_INICIAL.items():
+        codigo, _ = itens.adicionar_ao_inventario(id_item, quantidade)
+        if codigo != SUCESSO:
+            return False
+    for id_item in _EQUIPADO_NO_INICIO:
+        codigo, _ = itens.equipar_item(id_item)
+        if codigo != SUCESSO:
+            return False
+    return True
+
+
 def criar_novo_personagem():
-    """Pede nome e classe, cria o personagem e reinicia o inventário e o
-    progresso. Devolve True se o jogo pode começar."""
+    """Pede nome e classe, cria o personagem e reinicia o inventário (com o
+    kit inicial) e o progresso. Devolve True se o jogo pode começar."""
     while True:
         nome = _ler("Nome do personagem: ")
         _exibir("Classes:")
@@ -90,8 +108,8 @@ def criar_novo_personagem():
             continue
 
         codigo, _ = itens.reiniciar_inventario()
-        if codigo != SUCESSO:
-            _mostrar_erro(codigo)
+        if codigo != SUCESSO or not _dar_kit_inicial():
+            _mostrar_erro(codigo if codigo != SUCESSO else ERRO_ABORT)
             return False
 
         _sessao["id_cena"] = ID_CENA_INICIAL
@@ -267,14 +285,17 @@ def obter_acao(estado):
     turno é gasto.
     """
     inimigo = estado.get("inimigo", {})
-    _exibir(f"\n-- Turno {estado.get('turno', '?')} --")
-    _exibir(f"{inimigo.get('nome', 'Inimigo')}: PV {inimigo.get('pv', '?')}")
+    nome_inimigo = inimigo.get("nome", "Inimigo")
+    if estado.get("turno") == 1:
+        quem = "Você age primeiro!" if estado.get("ordem") == "aliado" else f"{nome_inimigo} age primeiro!"
+        _exibir(f"\n*** Combate contra {nome_inimigo}! {quem} ***")
+    # "relato" é definido pelo Combate: {"turno": n, "mensagens": [frases]}
+    for mensagem in estado.get("relato", {}).get("mensagens", []):
+        _exibir("  " + mensagem)
     codigo, dados = personagem.consultar_personagem()
-    if codigo == SUCESSO:
-        _exibir(f"Você: PV {dados['pv']}/{dados['pv_max']}")
-    # O formato de "relato" é definido pelo módulo Combate; ajustar se precisar.
-    for linha in estado.get("relato", {}).values():
-        _exibir(str(linha))
+    vida = f"{dados['pv']}/{dados['pv_max']}" if codigo == SUCESSO else "?"
+    _exibir(f"\n-- Turno {estado.get('turno', '?')} -- "
+            f"Você: PV {vida} | {nome_inimigo}: PV {inimigo.get('pv', '?')}")
 
     while True:
         _exibir("1) Atacar   2) Usar item")
@@ -288,8 +309,27 @@ def obter_acao(estado):
             _mostrar_erro(ERRO_DADOS_INVALIDOS)
 
 
+def _resumo_da_vitoria(inventario_antes, personagem_antes):
+    """Mostra o que a vitória rendeu: ouro, itens e subida de nível."""
+    codigo_i, inventario = itens.listar_inventario()
+    codigo_p, dados = personagem.consultar_personagem()
+    if codigo_i != SUCESSO or codigo_p != SUCESSO:
+        return
+    _exibir(f"  Ouro: +{inventario['ouro'] - inventario_antes['ouro']}")
+    for id_item, quantidade in inventario["itens"].items():
+        ganho = quantidade - inventario_antes["itens"].get(id_item, 0)
+        if ganho > 0:
+            codigo, ficha = itens.consultar_item(id_item)
+            _exibir(f"  Item: {ficha['nome'] if codigo == SUCESSO else id_item} x{ganho}")
+    if dados["nivel"] > personagem_antes["nivel"]:
+        _exibir(f"  Você subiu para o nível {dados['nivel']}!")
+
+
 def _jogar_combate(id_cena):
     """Conduz o combate da cena. Devolve False se o jogo não pode continuar."""
+    _, inventario_antes = itens.listar_inventario()
+    _, personagem_antes = personagem.consultar_personagem()
+
     _sessao["em_combate"] = True
     codigo, resultado = narrativa.iniciar_combate(id_cena, obter_acao)
     _sessao["em_combate"] = False
@@ -297,10 +337,11 @@ def _jogar_combate(id_cena):
         _mostrar_erro(codigo, {ERRO_ABORT: "O combate foi interrompido por um erro."})
         return False
     if resultado["vitoria"]:
-        _exibir("\nVocê venceu o combate!")
-        exibir_personagem()
+        _exibir("\n*** Vitória! ***")
+        if inventario_antes and personagem_antes:
+            _resumo_da_vitoria(inventario_antes, personagem_antes)
     else:
-        _exibir("\nVocê foi derrotado...")
+        _exibir("\n*** Você foi derrotado... ***")
     _sessao["id_cena"] = resultado["proxima_cena"]
     return True
 
