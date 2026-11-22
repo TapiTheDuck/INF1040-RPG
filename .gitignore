@@ -5,5 +5,5 @@ __pycache__/
 # Relatório gerado pelos testes
 tests/relatorio_testes.txt
 
-# Saves do jogo (XML gravados pelo main.py)
+# Saves do jogo
 src/dados/
