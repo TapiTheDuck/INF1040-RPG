@@ -31,64 +31,136 @@ ERRO_ID_INEXISTENTE = 4
 #   variantes: {nome_da_classe: {chaves da cena que mudam para essa classe}}
 _CENAS = {
     "inicio": {
-        "texto": "[Texto padrão da cena inicial]",
+        "texto": (
+            "O sol da manhã ilumina a entrada da caverna enquanto os pássaros "
+            "cantam e o vento sopra no meio da floresta desconhecida. "
+            "Você se sente preparado para uma aventura!"
+        ),
         "escolhas": {
-            "1": {"texto": "Seguir pela floresta", "proxima": "floresta"},
-            "2": {"texto": "Entrar na vila", "proxima": "vila"},
+            "1": {"texto": "Entrar na caverna", "proxima": "caverna"},
         },
         "combate": None,
         "final": False,
+    },
+    "caverna": {
+        "texto": (
+            "Você entra na caverna. Os seus pés se molham por conta do rio que "
+            "estava no caminho. É possível observar um caminho na entrada do "
+            "local, muita gente passou por aqui.\n\n"
+            ". . .\n\n"
+            "Você caminha mais fundo e repara em um rastro viscoso, um monstro "
+            "deve ter se perdido por aqui."
+        ),
+        "escolhas": {
+            "1": {"texto": "Seguir o rastro viscoso", "proxima": "combate_slime"},
+        },
+        "combate": None,
+        "final": False,
+    },
+    "combate_slime": {
+        "texto": "O combate se inicia!",
+        "escolhas": {},
+        "combate": {"inimigo": "slime", "vitoria": "pos_combate", "derrota": "fim_derrota"},
+        "final": False,
+    },
+    "pos_combate": {
+        "texto": (
+            "Não foi um combate difícil, você ainda tem muita energia para "
+            "seguir pelo caminho feito por prévios exploradores."
+        ),
+        "escolhas": {
+            "1": {"texto": "Vasculhar inimigo", "proxima": "vasculhar"},
+            "2": {"texto": "Seguir caminho", "proxima": "escadas"},
+        },
+        "combate": None,
+        "final": False,
+    },
+    "vasculhar": {
+        "texto": "Nada foi encontrado",
+        "escolhas": {
+            "1": {"texto": "Voltar ao caminho", "proxima": "pos_combate"},
+        },
+        "combate": None,
+        "final": False,
+    },
+    "escadas": {
+        "texto": (
+            "Após uma caminhada, você encontra escadas. Um corrimão bem firme e "
+            "madeira de qualidade da floresta te dão a sensação de que a sua "
+            "chegada é esperada..."
+        ),
+        "escolhas": {
+            "1": {"texto": "Descer as escadas", "proxima": "npc"},
+        },
+        "combate": None,
+        "final": False,
+    },
+        "npc": {
+        "texto": (
+            "As escadas te levam para uma outra repartição do local.\n"
+            "A vista do céu recortada pelo relevo acima de você te banha com rastros da luz do sol\n\n"
+            "Um outro viajante aguarda você se aproximando. Ele parece tranquilo, carrega uma grande "
+            "mochila com equipamentos de mineração e acampamento.\n\n"
+            "' Olá viajante! Seja bem-vindo à Estrada Alvorada. Meu nome é Flávio!'\n\n"
+            "O aventureiro espera sua resposta...\n\n"
+            "*Você se apresenta.\n\n"
+            "É um prazer! Espero não estar te atrapalhando, sei que o caminho até a primeira Cidade "
+            "Submersa. Sobre isso... eu estou desenvolvendo uma rota mais rápida, mas preciso de uma ajuda."
+        ),
+        "escolhas": {
+            "1": {"texto": "Ouvir mais", "proxima": "npc_ouvir_mais"},
+            "2": {"texto": "Seguir caminho", "proxima": "npc_recusa"},
+        },
+        "combate": None,
+        "final": False,
+    },
+    "npc_ouvir_mais": {
+        "texto": (
+            "' É o caminho que eu abri vindo da cidade até a entrada do trajeto. Por descuido meu, o "
+            "caminho ficou muito inseguro e aranhas enormes tomaram o local. Não esperava precisar "
+            "engajar em nenhum combate no caminho até a superfície, mas parece que é meu dia de sorte. "
+            "Posso te apontar o caminho e eu espero te encontrar na cidade.'\n\n"
+            "Ele vai em direção à parede do lado oposto daonde o caminho segue, revelando uma "
+            "bifurcação bem menor. Você consegue observar que o caminho está iluminado e sem nenhuma "
+            "armadilha.\n\n"
+            "' Tome aqui, pode ficar com esse amuleto dourado. Quando chegar em uma estalagem, vão "
+            "reconhecer o brasão, é o símbolo da minha família.  Por conta dos monstros, eu devo chegar "
+            "antes de você e te ver uma recompensa digna. Não esqueça de tapar os buracos no caminho "
+            "para mantê-lo longe das pestes.'\n\n"
+            "Brilhante."
+        ),
+        "escolhas": {
+            "1": {"texto": "Aceitar a missão e pegar o amuleto", "proxima": "npc_aceita"},
+            "2": {"texto": "Negar e seguir caminho", "proxima": "npc_recusa"},
+        },
+        "combate": None,
+        "final": False,
+    },
+    "npc_recusa": {
+        "texto": "Entendo, tenha uma ótima aventura.",
+        "escolhas": {},
+        "combate": None,
+        "final": True,  # provisório: fim do ato 0
+    },
+    "npc_aceita": {
+        "texto": "Muito obrigado!",
+        "escolhas": {},
+        "combate": None,
+        "final": True, 
         "variantes": {
-            "guerreiro": {"texto": "[Texto da cena inicial para o guerreiro]"},
-            "arqueiro": {"texto": "[Texto da cena inicial para o arqueiro]"},
-            "mago": {
-                "texto": "[Texto da cena inicial para o mago]",
-                "escolhas": {
-                    "1": {"texto": "Seguir pela floresta", "proxima": "floresta"},
-                    "2": {"texto": "Entrar na vila", "proxima": "vila"},
-                    "3": {"texto": "Examinar as runas na pedra", "proxima": "ruinas"},
-                },
-            },
+            "guerreiro": {"texto": "' Eu sabia que um guerreiro como você seria de confiança'"},
+            "mago": {"texto": "'Sábia decisão vinda de um sábio aventureiro.'"},
+            "arqueiro": {"texto": "'Espero que não tenha que lidar com nenhuma armadilha sua no caminho "
+                                  "depois... vamos manter uma boa relação'."},
         },
-    },
-    "vila": {
-        "texto": "[Texto da vila]",
-        "escolhas": {"1": {"texto": "Voltar para a estrada", "proxima": "inicio"}},
-        "combate": None,
-        "final": False,
-    },
-    "ruinas": {
-        "texto": "[Texto das ruínas (só o mago chega aqui)]",
-        "escolhas": {"1": {"texto": "Voltar para a estrada", "proxima": "inicio"}},
-        "combate": None,
-        "final": False,
-    },
-    "floresta": {
-        "texto": "[Texto da floresta]",
-        "escolhas": {"1": {"texto": "Seguir o rastro", "proxima": "emboscada"}},
-        "combate": None,
-        "final": False,
-    },
-    "emboscada": {
-        "texto": "[Texto da emboscada de goblins]",
-        "escolhas": {},
-        "combate": {"inimigo": "goblin", "vitoria": "clareira", "derrota": "fim_derrota"},
-        "final": False,
-    },
-    "clareira": {
-        "texto": "[Texto da clareira / final vitorioso]",
-        "escolhas": {},
-        "combate": None,
-        "final": True,
     },
     "fim_derrota": {
-        "texto": "[Texto de game over]",
+        "texto": "Fim da aventura.",
         "escolhas": {},
         "combate": None,
         "final": True,
     },
 }
-
 
 def _texto_valido(valor):
     """True se valor é uma string não vazia."""
