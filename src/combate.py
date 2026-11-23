@@ -70,12 +70,12 @@ def _texto_valido(valor):
     return isinstance(valor, str) and valor.strip() != ""
 
 
-def rolar_dado(lados):
+def _rolar_dado(lados):
     """Função interna: devolve um valor aleatório entre 1 e lados."""
     return random.randint(1, lados)
 
 
-def calcular_modificador(valor):
+def _calcular_modificador(valor):
     """Função interna: modificador de um atributo, (valor - 10) // 2."""
     return (valor - 10) // 2
 
@@ -95,8 +95,8 @@ def _dados_jogador():
         return ERRO_ABORT, None
 
     atributos = ficha["classe"]["atributos"]
-    principal = calcular_modificador(atributos[_ATRIBUTO_PRINCIPAL[ficha["classe"]["nome"]]])
-    mod_destreza = calcular_modificador(atributos["destreza"])
+    principal = _calcular_modificador(atributos[_ATRIBUTO_PRINCIPAL[ficha["classe"]["nome"]]])
+    mod_destreza = _calcular_modificador(atributos["destreza"])
 
     arma, armadura = equipamento["arma"], equipamento["armadura"]
     return SUCESSO, {
@@ -109,7 +109,7 @@ def _dados_jogador():
     }
 
 
-def rolar_iniciativa(estado):
+def _rolar_iniciativa(estado):
     """Função interna: define quem age primeiro.
 
     Jogador: d20 + modificador de Destreza. Inimigo: d20 + bônus de ataque.
@@ -120,13 +120,13 @@ def rolar_iniciativa(estado):
     codigo, jogador = _dados_jogador()
     if codigo != SUCESSO:
         return ERRO_ABORT, None
-    do_jogador = rolar_dado(20) + jogador["mod_destreza"]
-    do_inimigo = rolar_dado(20) + estado["inimigo"]["bonus_ataque"]
+    do_jogador = _rolar_dado(20) + jogador["mod_destreza"]
+    do_inimigo = _rolar_dado(20) + estado["inimigo"]["bonus_ataque"]
     estado["ordem"] = "aliado" if do_jogador >= do_inimigo else "inimigo"
     return SUCESSO, None
 
 
-def executar_turno(estado, acao_jogador, acao_inimigo):
+def _executar_turno(estado, acao_jogador, acao_inimigo):
     """Função interna: resolve uma rodada na ordem da iniciativa.
 
     Cada ataque rola d20 + modificador contra a CA do alvo; se acertar,
@@ -151,10 +151,10 @@ def executar_turno(estado, acao_jogador, acao_inimigo):
             if acao_jogador == "usar_item":
                 mensagens.append(f"{jogador['nome']} usa um item e gasta o turno.")
             else:
-                rolagem = rolar_dado(20)
+                rolagem = _rolar_dado(20)
                 total = rolagem + jogador["mod_ataque"]
                 if total >= inimigo["ca"]:
-                    dano = max(1, rolar_dado(jogador["dado_dano"]) + jogador["mod_dano"])
+                    dano = max(1, _rolar_dado(jogador["dado_dano"]) + jogador["mod_dano"])
                     inimigo["pv"] = max(0, inimigo["pv"] - dano)
                     mensagens.append(
                         f"{jogador['nome']} ataca (d20={rolagem}, total {total} vs CA "
@@ -168,10 +168,10 @@ def executar_turno(estado, acao_jogador, acao_inimigo):
                 break
         else:
             if acao_inimigo == "atacar":
-                rolagem = rolar_dado(20)
+                rolagem = _rolar_dado(20)
                 total = rolagem + inimigo["bonus_ataque"]
                 if total >= jogador["ca"]:
-                    dano = rolar_dado(inimigo["acoes"]["atacar"])
+                    dano = _rolar_dado(inimigo["acoes"]["atacar"])
                     codigo, pv = personagem.aplicar_dano(dano)
                     if codigo != personagem.SUCESSO:
                         return ERRO_ABORT, None
@@ -226,7 +226,7 @@ def orquestrar_combate(id_inimigo, obter_acao):
         "turno": 1,
         "relato": {},
     }
-    codigo, _ = rolar_iniciativa(estado)
+    codigo, _ = _rolar_iniciativa(estado)
     if codigo != SUCESSO:
         return ERRO_ABORT, None
 
@@ -238,7 +238,7 @@ def orquestrar_combate(id_inimigo, obter_acao):
         if not isinstance(acao, str) or acao not in ACOES_JOGADOR:
             return ERRO_ABORT, None
 
-        codigo, resultado = executar_turno(estado, acao, "atacar")
+        codigo, resultado = _executar_turno(estado, acao, "atacar")
         if codigo != SUCESSO:
             return ERRO_ABORT, None
 

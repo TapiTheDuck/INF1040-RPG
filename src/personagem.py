@@ -72,7 +72,7 @@ def _inteiro_nao_negativo(valor):
     return isinstance(valor, int) and not isinstance(valor, bool) and valor >= 0
 
 
-def passar_nivel():
+def _passar_nivel():
     """Função interna: sobe o personagem um nível conforme a sua classe.
 
     Aumenta o nível, melhora os atributos e o PV máximo da classe e recalcula
@@ -164,7 +164,7 @@ def subir_xp(valor):
     _personagem["xp"] += valor
     while _personagem["xp"] >= _personagem["xp_max"]:
         _personagem["xp"] -= _personagem["xp_max"]
-        passar_nivel()
+        _passar_nivel()
     return SUCESSO, _personagem["nivel"]
 
 
