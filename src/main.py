@@ -9,6 +9,8 @@ ser trocada (terminal, navegador) sem mexer na lógica do jogo.
 """
 
 import os
+import re
+import time
 from xml.dom import minidom
 from xml.etree import ElementTree
 from xml.etree.ElementTree import Element, SubElement
@@ -30,6 +32,9 @@ ARQUIVO_PERSONAGEM = os.path.join(PASTA_DADOS, "personagem.xml")
 ARQUIVO_INVENTARIO = os.path.join(PASTA_DADOS, "inventario.xml")
 ARQUIVO_PROGRESSO = os.path.join(PASTA_DADOS, "progresso.xml")
 CLASSES = ("guerreiro", "mago", "arqueiro")
+
+# Pausa (em segundos) entre as frases do texto de uma cena. 0 desliga o efeito.
+PAUSA_ENTRE_FRASES = 1.2
 
 # Kit inicial de cada novo personagem (do principal.py do Eduardo): o que ele
 # recebe e o que já começa equipado.
@@ -62,6 +67,26 @@ def _exibir(texto=""):
 
 def _ler(prompt):
     return input(prompt).strip()
+
+
+def _narrar(texto):
+    """Exibe o texto de uma cena frase por frase, com uma pausa entre elas.
+
+    Uma frase termina em ".", "!" ou "?" seguido de espaço ou quebra de linha.
+    Os espaços e quebras de linha originais são mantidos. Pedaços formados só
+    por pontos (como o separador ". . .") também ganham a pausa, um ponto por vez.
+    """
+    if PAUSA_ENTRE_FRASES <= 0:
+        _exibir(texto)
+        return
+    # O grupo de captura mantém os separadores na lista: [frase, espaço, frase, ...]
+    pedacos = re.split(r"(?<=[.!?])(\s+)", texto)
+    for indice, pedaco in enumerate(pedacos):
+        print(pedaco, end="", flush=True)
+        e_frase = indice % 2 == 0 and pedaco.strip() != ""
+        if e_frase and indice < len(pedacos) - 1:
+            time.sleep(PAUSA_ENTRE_FRASES)
+    print()
 
 
 def _mostrar_erro(codigo, especificas=None):
@@ -540,7 +565,8 @@ def _percorrer_cenas():
             })
             return
 
-        _exibir("\n" + cena["texto"])
+        _exibir()
+        _narrar(cena["texto"])
         if cena["final"]:
             _exibir("\n=== Fim da aventura ===")
             return
